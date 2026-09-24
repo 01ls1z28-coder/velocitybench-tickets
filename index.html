@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tickets · VelocityBench Hub</title>
+  <meta name="description" content="Shared helpdesk board. Auth and ticket data live in your Supabase cloud project; this static SPA is served from GitHub Pages." />
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="config.js"></script>
+  <script>
+    // Fallback when config.js is missing (gitignored) — placeholders trigger configure banner.
+    if (!window.VB_TICKETS_CONFIG) {
+      window.VB_TICKETS_CONFIG = {
+        supabaseUrl: 'https://YOUR_PROJECT.supabase.co',
+        supabaseAnonKey: 'YOUR_SUPABASE_ANON_KEY'
+      };
+    }
+  </script>
+</head>
+<body>
+  <!-- Auth gate -->
+  <div id="auth-gate" class="auth-gate hidden">
+    <div class="auth-card">
+      <h1>Tickets</h1>
+      <p class="sub">VelocityBench Hub · Sign in to your shared helpdesk. Ticket data lives in <strong>your Supabase cloud project</strong> — not only on a local PC.</p>
+      <div id="config-banner" class="config-banner hidden" style="margin-bottom:14px;">
+        Supabase is not configured yet. Copy <code>config.example.js</code> → <code>config.js</code> and set
+        <code>supabaseUrl</code> + <code>supabaseAnonKey</code> (anon/public key only). See HOW-TO.md.
+        You can still open a labeled demo preview of the UI.
+      </div>
+      <div class="auth-tabs">
+        <button type="button" data-tab="signin" class="active">Sign in</button>
+        <button type="button" data-tab="signup">Sign up</button>
+      </div>
+      <form id="auth-form" autocomplete="on">
+        <div id="signup-extras" class="hidden">
+          <div class="form-row">
+            <label for="auth-display-name">Display name</label>
+            <input id="auth-display-name" name="display_name" type="text" maxlength="80" placeholder="username-style name" />
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="auth-email">Email</label>
+          <input id="auth-email" name="email" type="email" required autocomplete="username" />
+        </div>
+        <div class="form-row">
+          <label for="auth-password">Password</label>
+          <input id="auth-password" name="password" type="password" required minlength="6" autocomplete="current-password" />
+        </div>
+        <button id="auth-submit" class="btn btn-primary btn-block" type="submit">Sign in</button>
+        <div id="auth-error" class="auth-error hidden" role="alert"></div>
+      </form>
+      <button type="button" id="btn-demo-preview" class="btn btn-ghost btn-block hidden" style="margin-top:10px;">
+        Demo preview (UI only — not your database)
+      </button>
+    </div>
+  </div>
+
+  <!-- App shell -->
+  <div id="app-shell" class="app hidden">
+    <div id="demo-banner" class="demo-banner hidden">
+      Demo preview (not your database) — sample cards are in-memory only. Configure Supabase for real auth &amp; data.
+    </div>
+    <div id="flash-error" class="banner-error hidden" role="alert"></div>
+
+    <header class="header">
+      <div class="brand">
+        <div class="logo-mark" aria-hidden="true">T</div>
+        <div class="brand-text">
+          <div class="chrome">VelocityBench Hub</div>
+          <h1>Tickets</h1>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="view-toggle" role="group" aria-label="View">
+          <button type="button" data-view="kanban" class="active">Kanban</button>
+          <button type="button" data-view="table">Table</button>
+        </div>
+        <button type="button" class="btn btn-primary" id="btn-new">New ticket</button>
+        <button type="button" class="btn" id="btn-export">Export CSV</button>
+        <button type="button" class="btn" id="btn-seed" title="Insert sample tickets for your account via anon+RLS">Demo seed</button>
+        <span class="user-chip" id="user-chip">—</span>
+        <button type="button" class="btn btn-ghost" id="btn-signout">Sign out</button>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <span class="filter-label">Status</span>
+      <div class="chip-row" id="filter-status"></div>
+      <span class="filter-label">Priority</span>
+      <div class="chip-row" id="filter-priority"></div>
+      <span class="filter-label">Due</span>
+      <div class="chip-row" id="filter-horizon"></div>
+      <input class="search-input" id="search" type="search" placeholder="Search title, tags, fleet…" />
+    </div>
+
+    <main class="main">
+      <div id="kanban" class="kanban"></div>
+      <div id="table-wrap" class="table-wrap hidden">
+        <table class="tickets">
+          <thead id="table-head"></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+      <div id="empty-state" class="empty hidden"></div>
+    </main>
+
+    <footer class="footer">
+      Tickets · VelocityBench Hub · Built for Jorge Guerra.
+      Ticket data lives in <strong>your Supabase cloud project</strong> (Auth + Postgres).
+      This static SPA is intended for <strong>GitHub Pages</strong> on this repository — not a local-only store.
+    </footer>
+  </div>
+
+  <!-- Detail drawer -->
+  <div id="drawer-backdrop" class="drawer-backdrop hidden"></div>
+  <aside id="drawer" class="drawer hidden" aria-label="Ticket detail">
+    <div class="drawer-head">
+      <h2 id="drawer-title">Ticket</h2>
+      <button type="button" class="btn btn-ghost" id="drawer-close" aria-label="Close">Close</button>
+    </div>
+    <div class="drawer-body">
+      <form id="drawer-form" class="fields-grid">
+        <div class="field span-2">
+          <label for="d-title">Title</label>
+          <input id="d-title" name="title" required />
+        </div>
+        <div class="field span-2">
+          <label for="d-description">Description</label>
+          <textarea id="d-description" name="description"></textarea>
+        </div>
+        <div class="field">
+          <label for="d-status">Status</label>
+          <select id="d-status" name="status">
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="blocked">Blocked</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="d-priority">Priority</label>
+          <select id="d-priority" name="priority">
+            <option value="low">Low</option>
+            <option value="med">Med</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="d-assignee">Assignee</label>
+          <select id="d-assignee" name="assignee_id"></select>
+        </div>
+        <div class="field">
+          <label for="d-due">Due</label>
+          <input id="d-due" name="due_at" type="datetime-local" />
+        </div>
+        <div class="field span-2">
+          <label for="d-tags">Tags (comma-separated)</label>
+          <input id="d-tags" name="tags" placeholder="fleet, maintenance" />
+        </div>
+        <div class="field">
+          <label for="d-unit">Unit #</label>
+          <input id="d-unit" name="unit_number" />
+        </div>
+        <div class="field">
+          <label for="d-vehicle">Vehicle</label>
+          <input id="d-vehicle" name="vehicle" />
+        </div>
+        <div class="field span-2">
+          <label for="d-driver">Driver</label>
+          <input id="d-driver" name="driver" />
+        </div>
+      </form>
+      <div class="drawer-actions">
+        <button type="button" class="btn btn-primary" id="drawer-save">Save</button>
+        <button type="button" class="btn btn-danger" id="drawer-delete">Delete</button>
+      </div>
+      <section>
+        <h3 style="font-size:0.85rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Comments</h3>
+        <div id="comments-list" class="comments"></div>
+        <form id="comment-form" class="comment-form" style="margin-top:10px;">
+          <textarea id="comment-body" rows="2" placeholder="Add a comment…" required></textarea>
+          <button type="submit" class="btn">Add comment</button>
+        </form>
+      </section>
+    </div>
+  </aside>
+
+  <!-- New ticket modal -->
+  <div id="new-modal-backdrop" class="modal-backdrop hidden">
+    <div class="modal" role="dialog" aria-labelledby="new-modal-title">
+      <h2 id="new-modal-title">New ticket</h2>
+      <form id="new-form" class="fields-grid">
+        <div class="field span-2">
+          <label>Title</label>
+          <input name="title" required />
+        </div>
+        <div class="field span-2">
+          <label>Description</label>
+          <textarea name="description"></textarea>
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select name="status">
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="blocked">Blocked</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Priority</label>
+          <select name="priority">
+            <option value="low">Low</option>
+            <option value="med" selected>Med</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Assignee</label>
+          <select name="assignee_id"></select>
+        </div>
+        <div class="field">
+          <label>Due</label>
+          <input name="due_at" type="datetime-local" />
+        </div>
+        <div class="field span-2">
+          <label>Tags</label>
+          <input name="tags" placeholder="fleet, maintenance" />
+        </div>
+        <div class="field">
+          <label>Unit #</label>
+          <input name="unit_number" />
+        </div>
+        <div class="field">
+          <label>Vehicle</label>
+          <input name="vehicle" />
+        </div>
+        <div class="field span-2">
+          <label>Driver</label>
+          <input name="driver" />
+        </div>
+        <div class="modal-actions span-2">
+          <button type="button" class="btn btn-ghost" id="new-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
