@@ -38,3 +38,7 @@ Branch: `review/tickets-v1`
 ## Tip B (not this tip)
 
 After Tip A CLEAR / LIVE: add Hub card on forcemetric-web pointing at the Pages URL.
+
+## Tip SHA
+
+`0a5614ea516a8e836fbe9195ad6f933b7e7cfd93` on `review/tickets-v1`
