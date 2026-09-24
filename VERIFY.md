@@ -41,4 +41,5 @@ After Tip A CLEAR / LIVE: add Hub card on forcemetric-web pointing at the Pages 
 
 ## Tip SHA
 
-`0a5614ea516a8e836fbe9195ad6f933b7e7cfd93` on `review/tickets-v1`
+Recorded after push on branch `review/tickets-v1`. Feature tip: `d00f5df5ed378d87bdcd019b5331c2d38d7ea8bc`.
+Hub card = Tip B after CLEAR (do not edit forcemetric-web in Tip A).
